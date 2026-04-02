@@ -1,0 +1,13 @@
+{
+  "name": "librarysystem-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end and API test suite for the LibrarySystem book-lending stack",
+  "type": "module",
+  "scripts": {},
+  "devDependencies": {
+    "@playwright/test": "1.59.1",
+    "@types/node": "25.5.0",
+    "typescript": "6.0.2"
+  }
+}
