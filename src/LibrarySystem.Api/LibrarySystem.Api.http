@@ -1,0 +1,6 @@
+@LibrarySystem.Api_HostAddress = http://localhost:5018
+
+GET {{LibrarySystem.Api_HostAddress}}/swagger/v1/swagger.json
+Accept: application/json
+
+###
