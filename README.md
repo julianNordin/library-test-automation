@@ -31,14 +31,43 @@ pyramid visible in one place.
 - A **fault-injection matrix** — defects seeded deliberately, and a record of which tier caught
   each one
 
+## The system under test
+
+`src/` is a **vendored snapshot** of two separate projects — an ASP.NET Core Web API and its
+React client — copied in without their own git history so this repository builds, runs and tests
+end to end from a clean clone. They are not the work being demonstrated here. They are the thing
+being tested, and they are modified only where the suite needs a way to *observe* them, never to
+make a test pass.
+
+Their own suites come along with them, and they are the base of the pyramid this project
+completes:
+
+| Tier | Lives in | Tests |
+|---|---|---|
+| Unit and in-process integration (C#) | `src/LibrarySystem.Api.Tests` | 11 |
+| Component and mocked integration (TypeScript) | `src/web/src` | 21 |
+| API and end-to-end (this project) | `tests/` | not yet written |
+
 ## Layout
 
 ```
-src/     the system under test, vendored: the API, its unit tests, and the web client
-tests/   the substance of this project
-docs/    test strategy, accessibility findings, the fault-injection matrix
+LibrarySystem.sln           builds the API and its tests from the repository root
+src/
+  LibrarySystem.Api/        the API under test
+  LibrarySystem.Api.Tests/  its xUnit suite
+  web/                      the React client and its Vitest suite
+tests/                      the substance of this project
+docs/                       test strategy, accessibility findings, fault-injection matrix
+```
+
+## Running what exists today
+
+```bash
+dotnet test                       # the API's xUnit suite, from the repository root
+cd src/web && npm ci && npm test  # the client's Vitest suite
 ```
 
 ## Status
 
-Planned. Nothing built yet.
+Early. The stack under test is in place and both inherited suites are green; the test suite
+itself is not written yet.
