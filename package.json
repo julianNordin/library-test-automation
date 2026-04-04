@@ -4,7 +4,11 @@
   "private": true,
   "description": "End-to-end and API test suite for the LibrarySystem book-lending stack",
   "type": "module",
-  "scripts": {},
+  "scripts": {
+    "db:up": "docker compose up -d --wait db",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs db"
+  },
   "devDependencies": {
     "@playwright/test": "1.59.1",
     "@types/node": "25.5.0",
