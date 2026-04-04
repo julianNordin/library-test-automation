@@ -62,9 +62,52 @@ docs/                       test strategy, accessibility findings, fault-injecti
 
 ## Running what exists today
 
+The two inherited suites need nothing but the SDKs — one uses an in-memory database, the other
+mocks its requests:
+
 ```bash
 dotnet test                       # the API's xUnit suite, from the repository root
 cd src/web && npm ci && npm test  # the client's Vitest suite
+```
+
+## The test database
+
+Everything this project adds runs against a real SQL Server in a container. One compose file
+defines it and CI uses that same file, so the database you test against locally and the one CI
+tests against cannot drift apart.
+
+```bash
+cp .env.example .env   # throwaway local credentials
+npm ci
+npm run db:up          # waits for the health check, not merely for the container to exist
+```
+
+`db:up` blocks until SQL Server actually accepts connections. That is 20-40 seconds on a cold
+start, and waiting on "the container is running" instead is the classic way to get a login
+failure that looks convincingly like a wrong password.
+
+Point the API at it and it creates the schema from migrations and seeds it on first start:
+
+```bash
+dotnet build src/LibrarySystem.Api
+export ConnectionStrings__DefaultConnection="Server=localhost,1433;Database=LibrarySystemDb;User Id=sa;Password=LocalTestPassw0rd;TrustServerCertificate=True"
+dotnet src/LibrarySystem.Api/bin/Debug/net9.0/LibrarySystem.Api.dll
+```
+
+Two details in there are deliberate. The environment variable **wins over**
+`src/LibrarySystem.Api/appsettings.Development.json`, which still points at a local SQL Express
+instance: environment variables are layered after JSON files in ASP.NET Core's configuration
+order, so the vendored file is left exactly as its own project wrote it. And the built assembly
+is launched directly rather than through `dotnet run`, which starts the application as a child
+process that outlives a request to stop its parent — leaving port 5018 held by something you can
+no longer see.
+
+Back to a clean database:
+
+```powershell
+./scripts/db-reset.ps1          # drop it; the next API start rebuilds and reseeds
+./scripts/db-reset.ps1 -Hard    # destroy the volume too, for a completely fresh engine
+npm run db:down                 # stop the container
 ```
 
 ## Status
