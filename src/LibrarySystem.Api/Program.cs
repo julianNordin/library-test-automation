@@ -32,6 +32,12 @@ builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
+// The database check is the point, not the endpoint. It makes /health mean "ready to serve a
+// request that touches data" rather than "the process is alive" - which is the precondition the
+// test suite actually waits on before it starts.
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>();
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -63,6 +69,7 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();
 
