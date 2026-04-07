@@ -94,7 +94,19 @@ export ConnectionStrings__DefaultConnection="Server=localhost,1433;Database=Libr
 dotnet src/LibrarySystem.Api/bin/Debug/net9.0/LibrarySystem.Api.dll
 ```
 
-Two details in there are deliberate. The environment variable **wins over**
+It is ready when `/health` says so:
+
+```bash
+curl http://localhost:5018/health   # Healthy
+```
+
+That endpoint is the one change this project makes to the system under test, and it is backed by
+a database check — so it reports `503 Unhealthy` when the database is unreachable, not just when
+the process is dead. That is the difference between a readiness signal the suite can wait on and
+one that lies. See [docs/test-strategy.md](docs/test-strategy.md) for the rule that governs
+changes to the code under test, and for the changes that were considered and rejected under it.
+
+Two further details are deliberate. The environment variable **wins over**
 `src/LibrarySystem.Api/appsettings.Development.json`, which still points at a local SQL Express
 instance: environment variables are layered after JSON files in ASP.NET Core's configuration
 order, so the vendored file is left exactly as its own project wrote it. And the built assembly
