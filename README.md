@@ -46,7 +46,7 @@ completes:
 |---|---|---|
 | Unit and in-process integration (C#) | `src/LibrarySystem.Api.Tests` | 11 |
 | Component and mocked integration (TypeScript) | `src/web/src` | 21 |
-| API and end-to-end (this project) | `tests/` | not yet written |
+| API and end-to-end (this project) | `tests/` | 2, and counting |
 
 ## Layout
 
@@ -125,7 +125,49 @@ Back to a clean database:
 npm run db:down                 # stop the container
 ```
 
+## Running the suite
+
+From a clean clone, with Docker running:
+
+```bash
+cp .env.example .env   # throwaway local credentials
+npm ci
+npm run db:up
+npm run test:e2e
+```
+
+Nothing else needs starting, and nothing is left running afterwards. Playwright brings both
+applications up itself, waits for them, runs the tests and stops them again:
+
+1. it builds the API and launches the built assembly on `:5018`, waiting on `/health` — which is
+   backed by a database check, so it means *ready to serve a request that touches data* rather
+   than merely *the process started*
+2. it builds the client and serves the **production bundle** through Vite's preview server on
+   `:4173`, which forwards `/api` to the API — so the browser sees a single origin and the API
+   needs no CORS policy at all
+3. it runs both projects: `api`, which speaks HTTP with no browser, and `ui`, which drives
+   Chromium against that bundle
+
+That the suite owns the lifecycle is deliberate rather than convenient. Started by hand, each
+application leaves a survivor behind — `dotnet run` launches the API as a child process that
+outlives its parent, and `vite preview` does the same on the other side of the stack. Playwright
+stops the whole process tree, so both ports come back.
+
+```bash
+npm run test:e2e:api      # the browserless tier alone
+npm run test:e2e:ui       # the browser tier alone
+npm run test:e2e:headed   # the browser tier, with a visible browser
+npm run test:e2e:report   # open the report from the last run
+```
+
+A failure leaves evidence in `test-results/`: a screenshot and a video of each one, and a trace
+where a retry was involved. Locally there are no retries — a failure is meant to be visible the
+first time it happens — so traces come from CI, which retries twice to absorb the noise of a
+shared runner. All of it is git-ignored.
+
 ## Status
 
-Early. The stack under test is in place and both inherited suites are green; the test suite
-itself is not written yet.
+Early, but running end to end. The stack under test is in place, both inherited suites are green,
+and Playwright now drives the production bundle against the real API and a real SQL Server. What
+exists so far is the harness and one smoke test at each tier — the suite proper is built on top
+of that.
