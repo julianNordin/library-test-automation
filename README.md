@@ -91,6 +91,7 @@ Point the API at it and it creates the schema from migrations and seeds it on fi
 ```bash
 dotnet build src/LibrarySystem.Api
 export ConnectionStrings__DefaultConnection="Server=localhost,1433;Database=LibrarySystemDb;User Id=sa;Password=LocalTestPassw0rd;TrustServerCertificate=True"
+export ASPNETCORE_URLS=http://localhost:5018
 dotnet src/LibrarySystem.Api/bin/Debug/net9.0/LibrarySystem.Api.dll
 ```
 
@@ -106,13 +107,15 @@ the process is dead. That is the difference between a readiness signal the suite
 one that lies. See [docs/test-strategy.md](docs/test-strategy.md) for the rule that governs
 changes to the code under test, and for the changes that were considered and rejected under it.
 
-Two further details are deliberate. The environment variable **wins over**
+Three further details are deliberate. The environment variable **wins over**
 `src/LibrarySystem.Api/appsettings.Development.json`, which still points at a local SQL Express
 instance: environment variables are layered after JSON files in ASP.NET Core's configuration
-order, so the vendored file is left exactly as its own project wrote it. And the built assembly
-is launched directly rather than through `dotnet run`, which starts the application as a child
+order, so the vendored file is left exactly as its own project wrote it. The built assembly is
+launched directly rather than through `dotnet run`, which starts the application as a child
 process that outlives a request to stop its parent — leaving port 5018 held by something you can
-no longer see.
+no longer see. And the URL is set explicitly, because `launchSettings.json` is read by `dotnet
+run` and by nothing else: launch the assembly without `ASPNETCORE_URLS` and it binds its own
+default of port 5000, while every instruction here carries on saying 5018.
 
 Back to a clean database:
 
