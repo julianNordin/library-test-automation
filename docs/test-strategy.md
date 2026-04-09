@@ -118,3 +118,83 @@ forwards `/api` to the API. The bundle therefore sees a single origin, exactly a
 to be deployed, and the API needs no cross-origin policy for the suite to work — which means the
 suite has not quietly required a configuration nobody ships. This costs no change to the client:
 Vite's preview server inherits the dev server's proxy, as recorded above.
+
+## Isolation by unique data
+
+Every test in this suite runs against the same database, at the same time as every other test,
+and none of them cleans up after itself. That is a decision, not an omission.
+
+### Why not the usual answers
+
+**Reset between tests.** Dropping and reseeding between tests is the most thorough answer and it
+costs the suite its parallelism: workers sharing a database cannot take turns wiping it. The run
+becomes serial, and a serial end-to-end suite is one nobody waits for.
+
+**Roll back a transaction.** The standard trick for in-process integration tests — open a
+transaction, run the code, roll back — needs the test and the code under test to share a
+connection. Here they do not share a *process*. The API has its own pool, and work the suite
+never committed is work the API cannot see. The technique does not survive the leap to testing
+over HTTP, which is worth saying out loud because it is the first thing people reach for.
+
+**Delete what you created.** This one fails on the domain rather than the plumbing. The API
+refuses, by design, to delete a book or a member with any loan history, and answers `409`. Loan
+history is exactly what the interesting tests create, so teardown by deletion is impossible for
+precisely the entities that matter. Any suite that relied on it would work until its tests got
+interesting.
+
+### What is done instead
+
+Each spec creates data nothing else will produce, asserts only on that data, and leaves it
+behind. Uniqueness comes from three things that cannot all coincide: the run, the worker process,
+and the call.
+
+Two rules follow, and the whole suite obeys them:
+
+> **Nothing asserts on a count, or on a list length.** What else is in the database is the
+> business of runs that came before, and none of it is this test's concern. Even the smoke test
+> checks that the five seeded titles are *present*, never that there are five books.
+
+> **Nothing depends on a pristine database.** The suite must pass twice in a row without a reset.
+> If it does not, something in it is quietly relying on being first.
+
+The database therefore grows as it is used. It is a container with a disposable volume, and
+`npm run db:down` is the reset — for the rare case where one is wanted at all, rather than as
+part of the loop.
+
+### The one place the suite talks to SQL
+
+Setup otherwise goes through the API, because a test that builds its world through a back door is
+testing a world the application cannot reach. One state defeats that.
+
+Borrowing stamps the borrowed and due dates from the clock, and no endpoint changes either
+afterwards. An **overdue loan is unreachable through the API**, and the only alternative is
+waiting fourteen days. That row is written directly.
+
+The exception is kept the width of its justification: one table, one insert, no deletes and no
+reset. A `TRUNCATE` behind that door would not be a convenience, it would be the isolation
+strategy above being quietly replaced by a different one.
+
+## Timestamps arrive without an offset
+
+The API stores UTC. The `DateTime` values it reads back out of SQL Server have an `Unspecified`
+kind, and `System.Text.Json` serialises those with no trailing `Z`:
+
+```json
+"borrowedDate": "2026-04-17T19:13:17.921"
+```
+
+JavaScript reads a date-time string carrying no offset as **local** time, so the obvious
+`new Date(loan.borrowedDate)` is wrong by the reader's own offset — two hours on the machine this
+was written on, and none at all on a UTC runner. A defect that appears on some machines and not
+others is the kind that gets filed as flakiness and retried until it goes away, so the suite
+parses these explicitly instead.
+
+Nothing is changed in the API for it. The timestamps are ambiguous, not incorrect, and
+reformatting them would alter a response that existing clients already read — which is the rule
+at the top of this document, applied to a case where breaking it would have been easy to justify.
+
+It is worth noticing what that ambiguity costs the client, though, because it is the sort of thing
+neither project could find alone: the client renders these values with `new Date(...)` too, so a
+loan due shortly before midnight UTC displays a day late to a reader east of it. Whether a loan is
+*overdue* is decided by the API and is unaffected. The disagreement is only ever about which day a
+timestamp is called.
