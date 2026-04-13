@@ -198,3 +198,49 @@ neither project could find alone: the client renders these values with `new Date
 loan due shortly before midnight UTC displays a day late to a reader east of it. Whether a loan is
 *overdue* is decided by the API and is unaffected. The disagreement is only ever about which day a
 timestamp is called.
+
+## The API tier, and why the API already having tests is not an objection
+
+The API ships its own integration tests, and they are good ones: they drive real controllers
+through `WebApplicationFactory`, in process, against the Entity Framework in-memory provider.
+The obvious question about the tier described here is what it adds.
+
+It adds the two things that harness replaces with a stand-in: **the wire, and the database.**
+
+Over the wire, this tier sees what a client sees — the status code, the headers, the serialised
+body. That is where a `Location` header either exists or does not, and where a `ProblemDetails`
+body turns out to be labelled `application/json` rather than `application/problem+json`, which
+matters because the client decides whether an error is worth parsing by reading that header.
+
+The database is the larger gap, because **several of this domain's rules are not enforced in C# at
+all.** Duplicate ISBN and duplicate email are refused only because SQL Server rejects the insert
+and the service translates the resulting `DbUpdateException` into a `409`. The in-memory provider
+does not enforce a unique index — checked directly rather than assumed — so neither rule can
+fire under it, and the inherited suite covers neither. Refusing to delete a book with loan
+history has the same shape, resting on a restricted foreign key.
+
+So the rules most worth having tests for are precisely the ones the in-process suite cannot
+reach. That is not a criticism of it. It is the reason this tier exists, and the reason it is not
+duplication.
+
+### What it found
+
+Two disagreements, both real, both invisible from either side alone.
+
+**The same timestamp is serialised two different ways.** `POST /api/members` returns
+`"joinedDate": "2026-04-17T19:13:17.921Z"`. `GET` of that same member returns
+`"2026-04-17T19:13:17.921"`, with no `Z`. The created value is the entity still in memory, whose
+`DateTime` has a UTC kind; the fetched one has been through a `datetime2` column, which has no
+concept of a kind. The instants agree and the strings do not — and the in-memory provider hands
+back the original object, so the two responses are identical there and the difference cannot
+appear.
+
+**There are two different 404 bodies.** A controller answering `NotFound()` produces ASP.NET's
+stock problem document, with a `type` and a `traceId` and no `detail`. A 404 raised as an
+exception is built by the API's own handler, which sets `detail` and neither of the others. A
+client cannot rely on `detail` being present on a 404.
+
+Neither is fixed here, and neither is a bug this project is entitled to close — see the rule at
+the top of this document. Both are pinned by a test that says plainly that it is characterising
+current behaviour rather than endorsing it, so a future change to either shows up as a failure
+that has to be read, rather than as a silent change to a published contract.
