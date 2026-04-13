@@ -71,6 +71,11 @@ export class ApiClient {
     return this.parse<Member[]>(response, 200, 'list members')
   }
 
+  async updateMember(id: number, member: NewMember): Promise<void> {
+    const response = await this.request.put(`/api/members/${id}`, { data: member })
+    await this.expectStatus(response, 204, `update member ${id}`)
+  }
+
   async deleteMember(id: number): Promise<void> {
     const response = await this.request.delete(`/api/members/${id}`)
     await this.expectStatus(response, 204, `delete member ${id}`)
