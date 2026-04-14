@@ -244,3 +244,54 @@ Neither is fixed here, and neither is a bug this project is entitled to close �
 the top of this document. Both are pinned by a test that says plainly that it is characterising
 current behaviour rather than endorsing it, so a future change to either shows up as a failure
 that has to be read, rather than as a silent change to a published contract.
+
+## Page objects, and the three rules they follow
+
+The browser tier addresses the client through objects in `tests/pages/` and `tests/components/`
+rather than through locators written in the specs. Three rules shape them, and each one is there
+to prevent a specific way this layer usually rots.
+
+### Locators are roles and labels, never CSS and never a test id
+
+`getByRole('button', { name: 'Borrow' })` and `getByLabel('Book')` address the page the way a
+person does. A class name is an implementation detail that is free to change and takes the suite
+with it when it does.
+
+The alternative — sprinkling `data-testid` through the client — would have meant **editing the
+system under test so that the tests could find things**, which the rule at the top of this
+document does not allow. Nothing was added. The client's markup was already accessible enough to
+address this way, and that is worth noticing in both directions: the accessibility work already
+in the client is what made this suite's locators possible, and a suite written this way keeps
+that accessibility honest, because a heading that stops being a heading breaks a test.
+
+One case shows why the rule needs care rather than obedience. The client uses `role="status"` for
+its loading indicators *and* for success toasts, and `role="alert"` for inline form errors *and*
+for failure toasts. An unscoped `getByRole('alert')` would find different things depending on
+timing — the classic intermittent failure. The notification region carries an accessible name, so
+the toast object scopes to it and the ambiguity disappears without touching the client.
+
+### They expose intent, and hand back where you end up
+
+`loans.table.returnBook(title)` is two clicks, because the client asks for confirmation. A spec
+about returning a book should not also be a spec about how many times a button has to be pressed;
+if that flow gains a step, one method changes and no spec does.
+
+Navigation methods return the object for the page you land on, so taking a wrong turn is a
+compile error rather than a puzzling failure thirty lines later.
+
+Rows are found by what they contain, never by index. An index is a promise that nothing will ever
+be inserted above it — exactly the promise this suite cannot make, since other specs are creating
+loans while any given one runs.
+
+### They contain no assertions
+
+Page objects return locators; specs assert on them. An assertion hidden inside a page object is
+one that nobody reading the spec can see, and it makes a failure point at a helper instead of at
+the behaviour that broke.
+
+It also keeps every web-first assertion in the spec, where its retrying is visible. That
+distinction is the single most important thing about writing Playwright well, and burying half of
+it in a helper is how a suite starts needing sleeps.
+
+Both rules are checked mechanically rather than by good intentions: no `expect(` and no raw
+selector appears anywhere under `tests/pages/` or `tests/components/`.
