@@ -1,5 +1,4 @@
-import { expect, test } from '@playwright/test'
-import { BooksPage } from '../pages'
+import { expect, test } from '../fixtures/test'
 import { SEEDED_BOOK_TITLES } from '../support/seed'
 
 // The whole stack in one assertion: a real browser loads the production bundle, the bundle asks
@@ -9,8 +8,8 @@ import { SEEDED_BOOK_TITLES } from '../support/seed'
 // Written through a page object, which is what the rest of the browser tier does. The locators
 // live in one place, they are role-based, and this spec says what it is checking rather than how
 // to find it.
-test('the books page lists the seeded titles', async ({ page }) => {
-  const books = await new BooksPage(page).goto()
+test('the books page lists the seeded titles', async ({ booksPage }) => {
+  const books = await booksPage.goto()
 
   await expect(books.heading).toBeVisible()
 

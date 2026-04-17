@@ -1,13 +1,11 @@
-import { expect, test } from '@playwright/test'
-import { ApiClient } from '../support/api'
+import { expect, test } from '../fixtures/test'
 import { aBook, aMember } from '../support/builders'
 import { expectProblem, expectValidationProblem } from '../support/problem'
 import { uniqueIsbn } from '../support/unique'
 import type { Book } from '../support/types'
 
 test.describe('books over HTTP', () => {
-  test('creates a book and hands back where to find it', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('creates a book and hands back where to find it', async ({ api }) => {
     const built = aBook().build()
 
     const response = await api.raw.post('/api/books', { data: built })
@@ -25,8 +23,7 @@ test.describe('books over HTTP', () => {
     expect(await api.getBook(created.id)).toEqual(created)
   })
 
-  test('lists a book once it exists', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('lists a book once it exists', async ({ api }) => {
     const created = await api.createBook(aBook().build())
 
     // Present, not counted: other specs are creating books at this very moment.
@@ -34,8 +31,7 @@ test.describe('books over HTTP', () => {
     expect(titles).toContain(created.title)
   })
 
-  test('updates a book in place', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('updates a book in place', async ({ api }) => {
     const created = await api.createBook(aBook().build())
 
     const revised = { ...aBook().build(), isbn: created.isbn }
@@ -44,8 +40,7 @@ test.describe('books over HTTP', () => {
     expect(await api.getBook(created.id)).toEqual({ id: created.id, ...revised })
   })
 
-  test('deletes a book that was never borrowed', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('deletes a book that was never borrowed', async ({ api }) => {
     const created = await api.createBook(aBook().build())
 
     await api.deleteBook(created.id)
@@ -53,8 +48,7 @@ test.describe('books over HTTP', () => {
     expect((await api.raw.get(`/api/books/${created.id}`)).status()).toBe(404)
   })
 
-  test('refuses a duplicate ISBN', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses a duplicate ISBN', async ({ api }) => {
     const isbn = uniqueIsbn()
     await api.createBook(aBook().withIsbn(isbn).build())
 
@@ -64,8 +58,7 @@ test.describe('books over HTTP', () => {
     expect(problem.detail).toContain(isbn)
   })
 
-  test('refuses a book that fails validation, and says which fields', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses a book that fails validation, and says which fields', async ({ api }) => {
 
     const response = await api.raw.post('/api/books', { data: {} })
 
@@ -82,8 +75,7 @@ test.describe('books over HTTP', () => {
     ])
   })
 
-  test('refuses a publication year outside the accepted range', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses a publication year outside the accepted range', async ({ api }) => {
 
     const response = await api.raw.post('/api/books', {
       data: aBook().withPublicationYear(1200).build(),
@@ -93,8 +85,7 @@ test.describe('books over HTTP', () => {
     expect(Object.keys(problem.errors)).toEqual(['PublicationYear'])
   })
 
-  test('refuses to delete a book with loan history', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses to delete a book with loan history', async ({ api }) => {
     const book = await api.createBook(aBook().build())
     const member = await api.createMember(aMember().build())
     const loan = await api.borrow(book.id, member.id)
@@ -113,8 +104,7 @@ test.describe('books over HTTP', () => {
     expect((await api.getBook(book.id)).id).toBe(book.id)
   })
 
-  test('answers 404 for an id that does not exist', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('answers 404 for an id that does not exist', async ({ api }) => {
     const missing = 2_000_000_000
 
     expect((await api.raw.get(`/api/books/${missing}`)).status()).toBe(404)

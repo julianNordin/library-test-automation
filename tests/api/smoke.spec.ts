@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../fixtures/test'
 import { SEEDED_BOOK_TITLES } from '../support/seed'
 
 interface BookReadDto {
@@ -13,8 +13,8 @@ interface BookReadDto {
 // this project's base URL with no page, no bundle and no proxy in between. What comes back has
 // been through a real controller and a real SQL Server, which is the difference between this
 // tier and the API's own in-process suite.
-test('the API serves the seeded books over HTTP', async ({ request }) => {
-  const response = await request.get('/api/books')
+test('the API serves the seeded books over HTTP', async ({ api }) => {
+  const response = await api.raw.get('/api/books')
 
   expect(response.status()).toBe(200)
 

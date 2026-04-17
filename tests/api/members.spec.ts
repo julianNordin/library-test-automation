@@ -1,5 +1,4 @@
-import { expect, test } from '@playwright/test'
-import { ApiClient } from '../support/api'
+import { expect, test } from '../fixtures/test'
 import { aBook, aMember } from '../support/builders'
 import { expectProblem, expectValidationProblem } from '../support/problem'
 import { uniqueEmail } from '../support/unique'
@@ -7,8 +6,7 @@ import { parseApiDate } from '../support/dates'
 import type { Member } from '../support/types'
 
 test.describe('members over HTTP', () => {
-  test('registers a member and stamps them with a joining date', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('registers a member and stamps them with a joining date', async ({ api }) => {
     const built = aMember().build()
 
     const response = await api.raw.post('/api/members', { data: built })
@@ -28,10 +26,7 @@ test.describe('members over HTTP', () => {
     )
   })
 
-  test('serialises a timestamp two ways, depending on how you asked for it', async ({
-    request,
-  }) => {
-    const api = new ApiClient(request)
+  test('serialises a timestamp two ways, depending on how you asked for it', async ({ api }) => {
 
     const created = (await (
       await api.raw.post('/api/members', { data: aMember().build() })
@@ -56,15 +51,13 @@ test.describe('members over HTTP', () => {
     )
   })
 
-  test('lists a member once they exist', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('lists a member once they exist', async ({ api }) => {
     const created = await api.createMember(aMember().build())
 
     expect((await api.listMembers()).map((m) => m.email)).toContain(created.email)
   })
 
-  test('updates a member in place', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('updates a member in place', async ({ api }) => {
     const created = await api.createMember(aMember().build())
 
     const revised = { ...aMember().build(), email: created.email }
@@ -73,8 +66,7 @@ test.describe('members over HTTP', () => {
     expect(await api.getMember(created.id)).toMatchObject(revised)
   })
 
-  test('deletes a member who never borrowed anything', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('deletes a member who never borrowed anything', async ({ api }) => {
     const created = await api.createMember(aMember().build())
 
     await api.deleteMember(created.id)
@@ -82,8 +74,7 @@ test.describe('members over HTTP', () => {
     expect((await api.raw.get(`/api/members/${created.id}`)).status()).toBe(404)
   })
 
-  test('refuses a duplicate email address', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses a duplicate email address', async ({ api }) => {
     const email = uniqueEmail()
     await api.createMember(aMember().withEmail(email).build())
 
@@ -95,8 +86,7 @@ test.describe('members over HTTP', () => {
     expect(problem.detail).toContain(email)
   })
 
-  test('refuses an address that is not an email address', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses an address that is not an email address', async ({ api }) => {
 
     const response = await api.raw.post('/api/members', {
       data: aMember().withEmail('definitely-not-an-email').build(),
@@ -107,8 +97,7 @@ test.describe('members over HTTP', () => {
     expect(problem.errors['Email']?.join(' ')).toContain('not a valid email address')
   })
 
-  test('refuses a member with no name', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses a member with no name', async ({ api }) => {
 
     const response = await api.raw.post('/api/members', {
       data: aMember().withFullName('').build(),
@@ -118,8 +107,7 @@ test.describe('members over HTTP', () => {
     expect(Object.keys(problem.errors)).toEqual(['FullName'])
   })
 
-  test('refuses to delete a member with loan history', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses to delete a member with loan history', async ({ api }) => {
     const book = await api.createBook(aBook().build())
     const member = await api.createMember(aMember().build())
     const loan = await api.borrow(book.id, member.id)
@@ -135,8 +123,7 @@ test.describe('members over HTTP', () => {
     expect((await api.getMember(member.id)).id).toBe(member.id)
   })
 
-  test('answers 404 for an id that does not exist', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('answers 404 for an id that does not exist', async ({ api }) => {
     const missing = 2_000_000_000
 
     expect((await api.raw.get(`/api/members/${missing}`)).status()).toBe(404)

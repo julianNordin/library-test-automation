@@ -1,15 +1,12 @@
-import { expect, test } from '@playwright/test'
-import { ApiClient } from '../support/api'
-import { TestDatabase } from '../support/db'
-import { aBook, aLoan, aMember } from '../support/builders'
+import { expect, test } from '../fixtures/test'
+import { aBook, aMember } from '../support/builders'
 import { LOAN_PERIOD_DAYS, MAX_ACTIVE_LOANS_PER_MEMBER } from '../support/domain'
 import { daysBetween, parseApiDate } from '../support/dates'
 import { expectProblem, expectValidationProblem } from '../support/problem'
 import type { Loan } from '../support/types'
 
 test.describe('loans over HTTP', () => {
-  test('borrows a book and dates the loan from now', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('borrows a book and dates the loan from now', async ({ api }) => {
     const book = await api.createBook(aBook().build())
     const member = await api.createMember(aMember().build())
 
@@ -36,8 +33,7 @@ test.describe('loans over HTTP', () => {
     expect(Math.abs(parseApiDate(loan.borrowedDate).getTime() - Date.now())).toBeLessThan(60_000)
   })
 
-  test('refuses to lend a book that is already out', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses to lend a book that is already out', async ({ api }) => {
     const book = await api.createBook(aBook().build())
     const first = await api.createMember(aMember().build())
     const second = await api.createMember(aMember().build())
@@ -52,8 +48,7 @@ test.describe('loans over HTTP', () => {
     expect(problem.detail).toContain(String(book.id))
   })
 
-  test('returns a book and frees it to be borrowed again', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('returns a book and frees it to be borrowed again', async ({ api }) => {
     const book = await api.createBook(aBook().build())
     const first = await api.createMember(aMember().build())
     const second = await api.createMember(aMember().build())
@@ -70,8 +65,7 @@ test.describe('loans over HTTP', () => {
     expect(next.memberId).toBe(second.id)
   })
 
-  test('refuses to return the same loan twice', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('refuses to return the same loan twice', async ({ api }) => {
     const book = await api.createBook(aBook().build())
     const member = await api.createMember(aMember().build())
 
@@ -86,16 +80,9 @@ test.describe('loans over HTTP', () => {
     expect(problem.detail).toContain(String(loan.id))
   })
 
-  test('stops a member at their active-loan cap', async ({ request }) => {
-    const api = new ApiClient(request)
-    const member = await api.createMember(aMember().build())
+  test('stops a member at their active-loan cap', async ({ api, seed }) => {
+    const { member, loans, oneTooMany } = await seed.memberAtLoanCap()
 
-    for (let i = 0; i < MAX_ACTIVE_LOANS_PER_MEMBER; i++) {
-      const book = await api.createBook(aBook().build())
-      await api.borrow(book.id, member.id)
-    }
-
-    const oneTooMany = await api.createBook(aBook().build())
     const problem = await expectProblem(
       await api.raw.post('/api/loans/borrow', {
         data: { bookId: oneTooMany.id, memberId: member.id },
@@ -106,38 +93,25 @@ test.describe('loans over HTTP', () => {
     expect(problem.detail).toContain(String(MAX_ACTIVE_LOANS_PER_MEMBER))
 
     // The cap counts active loans, not loans ever made: give one back and the next is allowed.
-    const loans = await api.listLoansForMember(member.id)
     await api.returnLoan(loans[0]!.id)
     await api.borrow(oneTooMany.id, member.id)
   })
 
-  test('reports a loan past its due date as overdue', async ({ request }) => {
-    const api = new ApiClient(request)
-    const db = new TestDatabase()
+  test('reports a loan past its due date as overdue', async ({ api, seed }) => {
+    const { loan } = await seed.overdueLoan(3)
 
-    try {
-      const book = await api.createBook(aBook().build())
-      const member = await api.createMember(aMember().build())
-      const loanId = await db.insertLoan(
-        aLoan().forBook(book).forMember(member).overdueBy(3).build(),
-      )
+    expect(loan.isOverdue).toBe(true)
+    expect((await api.listOverdueLoans()).map((l) => l.id)).toContain(loan.id)
 
-      expect((await api.getLoan(loanId)).isOverdue).toBe(true)
-      expect((await api.listOverdueLoans()).map((l) => l.id)).toContain(loanId)
+    // Returning it takes it off the overdue list even though it is still past its due date -
+    // the query is about books that are still out, not about lateness in the abstract.
+    await api.returnLoan(loan.id)
 
-      // Returning it takes it off the overdue list even though it is still past its due date -
-      // the query is about books that are still out, not about lateness in the abstract.
-      await api.returnLoan(loanId)
-
-      expect((await api.getLoan(loanId)).isOverdue).toBe(false)
-      expect((await api.listOverdueLoans()).map((l) => l.id)).not.toContain(loanId)
-    } finally {
-      await db.close()
-    }
+    expect((await api.getLoan(loan.id)).isOverdue).toBe(false)
+    expect((await api.listOverdueLoans()).map((l) => l.id)).not.toContain(loan.id)
   })
 
-  test('lists only the loans belonging to one member', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('lists only the loans belonging to one member', async ({ api }) => {
     const mine = await api.createMember(aMember().build())
     const theirs = await api.createMember(aMember().build())
 
@@ -150,8 +124,7 @@ test.describe('loans over HTTP', () => {
     expect(ids).not.toContain(theirLoan.id)
   })
 
-  test('answers 404 when borrowing against something that is not there', async ({ request }) => {
-    const api = new ApiClient(request)
+  test('answers 404 when borrowing against something that is not there', async ({ api }) => {
     const missing = 2_000_000_000
     const book = await api.createBook(aBook().build())
     const member = await api.createMember(aMember().build())
@@ -177,9 +150,7 @@ test.describe('loans over HTTP', () => {
     )
   })
 
-  test('refuses a borrow request that is not even well formed', async ({ request }) => {
-    const api = new ApiClient(request)
-
+  test('refuses a borrow request that is not even well formed', async ({ api }) => {
     const problem = await expectValidationProblem(
       await api.raw.post('/api/loans/borrow', { data: { bookId: 0, memberId: 0 } }),
     )
@@ -187,10 +158,7 @@ test.describe('loans over HTTP', () => {
     expect(Object.keys(problem.errors).sort()).toEqual(['BookId', 'MemberId'])
   })
 
-  test('produces two different 404 bodies, depending on what produced them', async ({
-    request,
-  }) => {
-    const api = new ApiClient(request)
+  test('produces two different 404 bodies, depending on what produced them', async ({ api }) => {
     const missing = 2_000_000_000
 
     // Characterising the API as it is. A controller answering NotFound() itself gets ASP.NET's

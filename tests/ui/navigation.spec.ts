@@ -1,11 +1,8 @@
-import { expect, test } from '@playwright/test'
-import { AppLayout, BookDetailPage, BooksPage, MembersPage } from '../pages'
-import { ApiClient } from '../support/api'
-import { aBook, aMember } from '../support/builders'
+import { expect, test } from '../fixtures/test'
 
 test.describe('moving around the client', () => {
-  test('reaches every main page from the navigation', async ({ page }) => {
-    const app = await new AppLayout(page).goto()
+  test('reaches every main page from the navigation', async ({ app }) => {
+    await app.goto()
 
     await expect(app.nav).toBeVisible()
 
@@ -14,11 +11,10 @@ test.describe('moving around the client', () => {
     await expect((await app.goToLoans()).heading).toBeVisible()
   })
 
-  test('opens a book from the grid and shows what the API holds', async ({ page, request }) => {
-    const api = new ApiClient(request)
-    const book = await api.createBook(aBook().build())
+  test('opens a book from the grid and shows what the API holds', async ({ booksPage, seed }) => {
+    const book = await seed.book()
 
-    const books = await new BooksPage(page).goto()
+    const books = await booksPage.goto()
     const detail = await books.open(book.title)
 
     // Everything asserted here came out of SQL Server, through the API, through the proxy and
@@ -30,13 +26,10 @@ test.describe('moving around the client', () => {
     await expect(detail.detail(`Published ${book.publicationYear}`)).toBeVisible()
   })
 
-  test('opens a member and shows the loans they hold', async ({ page, request }) => {
-    const api = new ApiClient(request)
-    const book = await api.createBook(aBook().build())
-    const member = await api.createMember(aMember().build())
-    await api.borrow(book.id, member.id)
+  test('opens a member and shows the loans they hold', async ({ membersPage, seed }) => {
+    const { book, member } = await seed.borrowedBook()
 
-    const members = await new MembersPage(page).goto()
+    const members = await membersPage.goto()
     const detail = await members.open(member.fullName)
 
     await expect(detail.heading).toHaveText(member.fullName)
@@ -44,8 +37,8 @@ test.describe('moving around the client', () => {
     await expect(detail.loanEntry(book.title)).toContainText('active')
   })
 
-  test('says so when a book id leads nowhere', async ({ page }) => {
-    const detail = await new BookDetailPage(page).goto(2_000_000_000)
+  test('says so when a book id leads nowhere', async ({ bookDetailPage }) => {
+    const detail = await bookDetailPage.goto(2_000_000_000)
 
     await expect(detail.notFoundMessage).toHaveText('This book could not be found.')
   })
