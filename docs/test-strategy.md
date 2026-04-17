@@ -295,3 +295,49 @@ it in a helper is how a suite starts needing sleeps.
 
 Both rules are checked mechanically rather than by good intentions: no `expect(` and no raw
 selector appears anywhere under `tests/pages/` or `tests/components/`.
+
+## Fixtures, and the difference between worker-scoped and test-scoped
+
+Every spec takes `test` and `expect` from `tests/fixtures/test.ts` rather than from
+`@playwright/test`, and gets `api`, `db`, `seed` and the page objects already built. The aim is
+narrow: a spec's first line should be the situation it is about, not four lines of wiring that
+every other spec also has.
+
+`seed` is deliberately a factory of *situations* rather than of records — `seed.overdueLoan(3)`,
+`seed.memberAtLoanCap()`. A spec about the loan cap should begin with a member at their cap, not
+with a loop that adds up to one.
+
+The scoping is worth reading, because the two cases are decided on opposite grounds and the
+usual shorthand — "worker-scope the expensive things" — gets one of them wrong.
+
+**`db` is worker-scoped because it is expensive and holds nothing.** Opening a connection pool
+per test would dominate the run. What makes that safe is not the cost but the contents: the pool
+holds sockets, and there is nothing in it a later test could learn from an earlier one.
+
+**`api` is test-scoped even though building it is free, because of what it wraps.** Playwright
+gives each test a fresh `request` context; sharing one across tests would share cookies and
+connection state between them. That is exactly the leak between tests this suite is built to rule
+out, and it would have been introduced in the name of an optimisation worth nothing.
+
+So the question is not "is this expensive" but **"could a later test see something an earlier one
+did"** — and only when the answer is no does cost get a vote.
+
+The page objects are test-scoped of necessity: each wraps `page`.
+
+### The rules are enforced, not merely written down
+
+A convention that lives in a document is one that a hurried afternoon quietly repeals. The suite
+lints itself, and the rules it cares about most are the ones that fail silently rather than
+loudly:
+
+| Rule | Why it is switched on |
+|---|---|
+| `no-restricted-imports` on `test`/`expect` | A spec importing the bare `test` still runs — it simply has no `seed`, `api` or page objects, and the failure reads as a missing fixture rather than a wrong import. |
+| `playwright/no-wait-for-timeout` | The single most common cause of a flaky Playwright suite. `expect(locator)` retries and `expect(value)` does not, and a sleep is what people reach for when they meet that difference. |
+| `playwright/expect-expect` | A test with no assertion passes whatever the software does. It caught one in this suite the day it was switched on. |
+| `playwright/no-conditional-in-test` | A branch in a test is two tests, one of which is not running today and nobody knows which. |
+| `playwright/no-force-option` | `force: true` clicks what a user could not have clicked, turning a real accessibility defect into a passing test. |
+| `no-restricted-imports` on `expect` in page objects | Enforces the rule stated above — objects expose locators, specs assert. |
+
+`src/` is not linted here. It is vendored, it has its own configuration, and this repository has
+no business passing judgement on code it does not own.
