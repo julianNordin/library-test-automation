@@ -341,3 +341,38 @@ loudly:
 
 `src/` is not linted here. It is vendored, it has its own configuration, and this repository has
 no business passing judgement on code it does not own.
+
+## Web-first assertions, and why there is not a single sleep
+
+There is exactly one thing to understand about writing Playwright well, and every flaky suite is
+built out of not understanding it:
+
+> `expect(locator)` **retries**. `expect(value)` **does not**.
+
+`await expect(page.getByRole('row')).toBeVisible()` re-evaluates until the row is there or the
+timeout runs out. `expect(await rows.count()).toBe(3)` reads a number once, at whatever instant
+the test happened to reach that line, and compares it. The second one fails whenever the machine
+is a little slow — and the fix that suggests itself is a sleep, which turns a fast failing test
+into a slow passing one without changing anything about the race underneath.
+
+So this suite never waits for a number of milliseconds. It waits for the page to say something.
+The client refetches after every mutation and debounces its search box by 250ms; when the DOM
+settles is the client's business, and every assertion here is written to be patient about it
+rather than to guess.
+
+That is not left to discipline. `playwright/no-wait-for-timeout` is an error, so a sleep cannot
+reach a commit even on an afternoon when it would be convenient.
+
+### The one place a list is counted
+
+The sorting test asserts an exact ordered list of three titles, which looks like the counting the
+isolation doctrine forbids. It is allowed for a specific reason: the three books share a token
+nothing else in the database has, and the search box narrows the page to exactly them. The list
+being counted is entirely of that test's own making.
+
+The rule was never "never count". It is **never depend on what other runs left behind**, and a
+list you created in full is not that.
+
+It also has to be an ordered assertion for the test to mean anything. The three books are
+arranged so that title, author and publication year each put them in a *different* order, so no
+one expected sequence could be satisfied by a sort that had quietly stopped working.
