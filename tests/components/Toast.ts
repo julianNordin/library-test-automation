@@ -15,14 +15,23 @@ export class Toast {
     this.region = page.getByRole('region', { name: 'Notifications' })
   }
 
-  /** A success toast. The client announces these politely, as `role="status"`. */
-  success(): Locator {
-    return this.region.getByRole('status')
+  /**
+   * A success toast, optionally the one carrying a particular message.
+   *
+   * The message matters more than it looks. Toasts linger for four seconds, so a flow that
+   * borrows and then returns has two of them on screen at once - and an unfiltered locator
+   * resolving to two elements fails on strict mode, intermittently, depending on how fast the
+   * run was. Naming the message asks for the toast the spec actually means.
+   */
+  success(message?: string): Locator {
+    const toasts = this.region.getByRole('status')
+    return message === undefined ? toasts : toasts.filter({ hasText: message })
   }
 
   /** A failure toast. Announced assertively, as `role="alert"`. */
-  error(): Locator {
-    return this.region.getByRole('alert')
+  error(message?: string): Locator {
+    const toasts = this.region.getByRole('alert')
+    return message === undefined ? toasts : toasts.filter({ hasText: message })
   }
 
   /** Any toast, whichever kind - for asserting that nothing was announced at all. */
