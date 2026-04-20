@@ -1,4 +1,5 @@
 import { expect, test } from '../fixtures/test'
+import { MAX_ACTIVE_LOANS_PER_MEMBER } from '../support/domain'
 
 // The rules that make this more than a form over a table, checked where a user meets them.
 //
@@ -44,6 +45,31 @@ test.describe('the rules, as a user meets them', () => {
     await expect(loans.table.rowFor(oneTooMany.title)).toBeHidden()
   })
 
+  test('lets a member take their last allowed book, and only then refuses', async ({
+    seed,
+    loansPage,
+  }) => {
+    // Both sides of the boundary, which is the whole point of a boundary.
+    //
+    // The test above notices an off-by-one as well, but only by accident and badly: its setup
+    // borrows five books, so a cap of four makes the *scenario* throw. That failure reads as
+    // broken test data and sends whoever sees it looking through the suite. Checked by moving
+    // the cap to four and running both.
+    //
+    // This one fails on an assertion instead, and names the side of the boundary that moved.
+    const { member } = await seed.memberHolding(MAX_ACTIVE_LOANS_PER_MEMBER - 1)
+    const lastAllowed = await seed.book()
+    const oneTooMany = await seed.book()
+
+    const loans = await loansPage.goto()
+
+    await loans.borrow(lastAllowed.title, member.fullName)
+    await expect(loans.toast.success('Book borrowed successfully.')).toBeVisible()
+
+    await loans.borrow(oneTooMany.title, member.fullName)
+    await expect(loans.toast.error()).toContainText('5 active loans')
+  })
+
   test('marks a late loan as overdue on its row', async ({ seed, loansPage }) => {
     const { book } = await seed.overdueLoan(6)
 
@@ -70,6 +96,19 @@ test.describe('the rules, as a user meets them', () => {
     expect(response.status()).toBe(200)
     await expect(loans.table.rowFor(book.title)).toBeVisible()
     await expect(loans.table.overdueBadge(book.title)).toBeVisible()
+  })
+
+  test("shows a late loan as overdue on the member's own page", async ({
+    seed,
+    memberDetailPage,
+  }) => {
+    const { book, member } = await seed.overdueLoan(5)
+
+    // The member page renders three states from one expression - returned, overdue, active - and
+    // the middle one is reachable only through a loan the API cannot create.
+    const detail = await memberDetailPage.goto(member.id)
+
+    await expect(detail.loanEntry(book.title)).toContainText('overdue')
   })
 
   test('drops a loan off the overdue list once it is given back', async ({ seed, loansPage }) => {

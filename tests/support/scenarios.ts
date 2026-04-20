@@ -61,15 +61,24 @@ export class Scenarios {
     return { book, member, loan: await this.api.getLoan(loanId) }
   }
 
-  /** A member holding as many books as the rules allow, and one more book they cannot have. */
-  async memberAtLoanCap(): Promise<{ member: Member; loans: Loan[]; oneTooMany: Book }> {
+  /** A member holding exactly this many books, for testing either side of the cap. */
+  async memberHolding(count: number): Promise<{ member: Member; books: Book[]; loans: Loan[] }> {
     const member = await this.member()
+    const books: Book[] = []
     const loans: Loan[] = []
 
-    for (let i = 0; i < MAX_ACTIVE_LOANS_PER_MEMBER; i++) {
+    for (let i = 0; i < count; i++) {
       const book = await this.book()
+      books.push(book)
       loans.push(await this.api.borrow(book.id, member.id))
     }
+
+    return { member, books, loans }
+  }
+
+  /** A member holding as many books as the rules allow, and one more book they cannot have. */
+  async memberAtLoanCap(): Promise<{ member: Member; loans: Loan[]; oneTooMany: Book }> {
+    const { member, loans } = await this.memberHolding(MAX_ACTIVE_LOANS_PER_MEMBER)
 
     return { member, loans, oneTooMany: await this.book() }
   }
