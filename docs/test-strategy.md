@@ -376,3 +376,46 @@ list you created in full is not that.
 It also has to be an ordered assertion for the test to mean anything. The three books are
 arranged so that title, author and publication year each put them in a *different* order, so no
 one expected sequence could be satisfied by a sort that had quietly stopped working.
+
+## The same rule at two tiers, and why that is not duplication
+
+Every business rule in this system is asserted twice: once at the API tier and once through the
+browser. They are not the same assertion written twice.
+
+**The API test proves the rule holds.** A member at their cap is refused; the response is a `409`
+whose body explains why.
+
+**The browser test proves the person is told.** A rule that is enforced correctly and then
+reported to the user as the word "Conflict" has failed at the only place it was ever for.
+
+That second sentence is not hypothetical, and the test that carries it is the most valuable one in
+this repository. The API builds its error bodies as problem documents but writes them with
+`WriteAsJsonAsync`, which labels them `application/json` rather than `application/problem+json`.
+The client only parses an error body it recognises as JSON. Narrow that check to the more specific
+type — a change that looks like a tightening, and that every unit test in both projects would
+still pass — and the client goes on working perfectly: the request still fails, the red toast
+still appears, and every explanation inside it is replaced by the bare status text.
+
+The test was checked by doing exactly that. With the check narrowed, the toast reads:
+
+```html
+<p role="alert" class="toast error">Conflict</p>
+```
+
+The assertion is therefore written to insist on the sentence — `already on loan` — and not merely
+on the presence of an error. **An assertion that only checks that something went wrong cannot
+tell the difference between a message and a shrug.**
+
+### Where a rule is only testable at one tier
+
+Two of this domain's rules are asserted at the API tier alone, and that is a finding rather than
+a gap: **the client has no user interface for either of them.** It issues only `GET` and `POST`.
+
+- *Deleting a book or a member with loan history* — nothing in the client deletes anything.
+- *Returning a loan that was already returned* — the return button is rendered only for a loan
+  that is still out.
+
+Reaching either through the browser would mean building a situation no user can reach, and a test
+that contorts itself into an impossible state is evidence about a system nobody ships. They are
+covered where they are real, and the reason is written here instead of a test being invented to
+fill the row.
