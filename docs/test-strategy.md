@@ -419,3 +419,49 @@ Reaching either through the browser would mean building a situation no user can 
 that contorts itself into an impossible state is evidence about a system nobody ships. They are
 covered where they are real, and the reason is written here instead of a test being invented to
 fill the row.
+
+## Intercepting requests, and the line that is not crossed
+
+Three tests reach into the browser's network layer with `page.route()`. In a suite whose whole
+argument is that it substitutes nothing, that needs a boundary rather than an apology.
+
+**Interception is used to create a situation the real stack cannot easily be put into. It is
+never used to change what the API would answer.**
+
+- *The API cannot be reached.* Requests are aborted. The alternative is stopping the real API,
+  which exercises the same branch in the client and takes every other test in the run with it.
+- *There are no loans at all.* An empty database is a state this suite can never reach, because it
+  never cleans up — by design. The response is the API's own shape, an empty list.
+- *The response is slow.* Held open for a moment, so the loading state exists long enough to be
+  asserted at all.
+
+That is the same argument as the single direct SQL insert, arriving from the other side: a state
+the system genuinely has, that the ordinary route to it cannot produce. What is not done here is
+inventing an answer the API would never give, which is precisely the failure mode this project
+was built in response to.
+
+The slow-response test deserves a note, because it looks like the thing the suite forbids. A
+`waitForTimeout` guesses how long the application needs and hopes; the delay here *controls* the
+timing rather than betting on it, and the assertion that follows still retries. The difference is
+whether the test is in charge of the clock or at its mercy.
+
+## Proving that an absence can be noticed
+
+An assertion that something is *not* there is the easiest kind to get wrong, because a broken
+locator and a genuinely absent element look identical from the outside. Both are green.
+
+This has bitten this codebase's neighbours before — a suite once asserted the absence of CORS
+headers against an application that had no CORS support whatsoever, and passed, because "no
+header" is also what nothing at all looks like.
+
+So every absence assertion here is paired with the same locator finding something:
+
+- The test that no toast appears for an invalid form is backed by a second test that counts one
+  toast, using the identical locator, after a borrow that works.
+- The test that books vanish when the API is unreachable loads the page working first and asserts
+  a seeded title is visible, *then* aborts the requests and asserts it is gone.
+- The test that a validation message clears asserts it visible before it asserts it hidden.
+
+The pairing lives in the tests rather than in a checking pass done once and forgotten, because a
+locator that quietly stops matching six months from now will not be caught by a pass that happened
+today.
