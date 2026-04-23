@@ -31,8 +31,15 @@ export class BorrowForm {
     await this.submitButton.click()
   }
 
-  /** The validation messages the form shows for itself, before any request is made. */
-  validationErrors(): Locator {
-    return this.page.getByRole('alert')
+  /**
+   * A validation message the form shows for itself, before any request is made.
+   *
+   * Named by its text rather than merely by role. The client uses `role="alert"` for these *and*
+   * for failure toasts, so an unnamed locator would sometimes mean one and sometimes the other -
+   * the same ambiguity the toast object solves by scoping to the notification region, arriving
+   * here from the opposite direction.
+   */
+  validationError(message: string): Locator {
+    return this.page.getByRole('alert').filter({ hasText: message })
   }
 }
