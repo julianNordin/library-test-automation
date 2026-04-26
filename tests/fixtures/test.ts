@@ -1,7 +1,9 @@
 import { test as base } from '@playwright/test'
+import type { Result } from 'axe-core'
 import { ApiClient } from '../support/api'
 import { TestDatabase } from '../support/db'
 import { Scenarios } from '../support/scenarios'
+import { scan } from '../support/a11y'
 import {
   AppLayout,
   BookDetailPage,
@@ -26,6 +28,9 @@ type Fixtures = {
   membersPage: MembersPage
   memberDetailPage: MemberDetailPage
   loansPage: LoansPage
+
+  /** Runs an accessibility scan of whatever is on screen right now. */
+  a11yScan: () => Promise<Result[]>
 }
 
 type WorkerFixtures = {
@@ -85,6 +90,12 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 
   loansPage: async ({ page }, use) => {
     await use(new LoansPage(page))
+  },
+
+  // A function rather than a value, because what is on screen is the thing being scanned - the
+  // spec decides when, after putting the page into the state it cares about.
+  a11yScan: async ({ page }, use) => {
+    await use(() => scan(page))
   },
 })
 

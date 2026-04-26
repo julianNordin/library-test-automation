@@ -75,6 +75,14 @@ export default defineConfig({
       testDir: './tests/ui',
       use: { ...devices['Desktop Chrome'], baseURL: webUrl },
     },
+    {
+      // Accessibility scans, kept as their own project so they can be run - or skipped - on
+      // their own. They are the slowest tests here and the ones whose results are read rather
+      // than merely counted.
+      name: 'a11y',
+      testDir: './tests/a11y',
+      use: { ...devices['Desktop Chrome'], baseURL: webUrl },
+    },
   ],
 
   webServer: [
