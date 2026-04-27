@@ -465,3 +465,63 @@ So every absence assertion here is paired with the same locator finding somethin
 The pairing lives in the tests rather than in a checking pass done once and forgotten, because a
 locator that quietly stops matching six months from now will not be caught by a pass that happened
 today.
+
+## Coverage: one number for two languages, and what it is not measuring
+
+`./scripts/coverage.ps1` runs both unit suites, collects Cobertura from coverlet and lcov from
+v8, and merges them with ReportGenerator into a single HTML report, a Markdown summary for a CI
+job summary, and a merged Cobertura file it then gates on.
+
+Today:
+
+| | Line | Branch |
+|---|---|---|
+| **Combined** | **46.0%** | **56.7%** |
+| `librarysystem-web` (TypeScript) | 80.2% | 61.1% |
+| `LibrarySystem.Api` (C#) | 36.2% | 45.5% |
+
+Neither project needed changing to produce this. `coverlet.collector` was already referenced, and
+the lcov reporter is chosen on the command line rather than written into the client's
+`vite.config.ts` — so the count of changes to the system under test stays at one.
+
+### The end-to-end tiers are outside the number, on purpose
+
+That 36.2% is the figure people react to, and reacting to it is a mistake worth explaining.
+
+Whole controllers show as **0% covered** — every action on `MembersController`, update and delete
+on `BooksController`, four of the six read endpoints on `LoansController` — and every one of them
+is exercised, repeatedly, by the API tier in `tests/api/`. They read as untested because coverage
+measures **the code that ran inside the instrumented process**, and the end-to-end tiers run the
+API as a separate process that nothing is attached to. The tests are real; the instrumentation
+simply is not there to see them.
+
+It would be possible to attach it. It is deliberately not done, because the resulting number would
+be worse than the honest one: a single figure blending "this line was executed by a test that
+asserts something about it" with "this line was executed on the way past" invites exactly the
+conclusion it cannot support. A line an end-to-end test happened to run through is not a line an
+end-to-end test *checks*.
+
+So the figure means one specific thing — **how much of each codebase its own unit suite exercises**
+— and the rest of this document is what says whether the system is tested.
+
+### What the number did usefully reveal
+
+Used as a map rather than a score, it is worth having. It says plainly that the base of the
+pyramid is thin: twelve C# tests, covering roughly a third of the API, and none of them touching
+members at all. That is a fact about the inherited suite that its green tick concealed, and it is
+the reason the API tier was written the way it was rather than as a thin smoke layer over
+something already solid.
+
+It also exposed one genuine gap that no tier covers: the **500 branch** of the global exception
+handler, reached only by an exception the API does not expect. Producing one on demand would mean
+either changing the API to be able to fail, or pulling the database out from under a live request
+— which would break every test running in parallel with it. It is recorded here as uncovered
+rather than covered dishonestly.
+
+### Floors, not targets
+
+The thresholds are set at what is achieved today, and they are floors. A threshold above the
+current figure fails every run until somebody lowers it, which teaches a team to ignore the gate
+entirely; a threshold far below can never trip. Neither is a check. These are meant to be raised
+deliberately when the coverage behind them genuinely improves — and the gate was checked by
+raising one to 99% and confirming the script fails with the reason.
