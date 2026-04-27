@@ -46,7 +46,7 @@ completes:
 |---|---|---|
 | Unit and in-process integration (C#) | `src/LibrarySystem.Api.Tests` | 11 |
 | Component and mocked integration (TypeScript) | `src/web/src` | 21 |
-| API and end-to-end (this project) | `tests/` | 2, and counting |
+| API and end-to-end (this project) | `tests/` | 74 |
 
 ## Layout
 
@@ -156,18 +156,62 @@ stops the whole process tree, so both ports come back.
 ```bash
 npm run test:e2e:api      # the browserless tier alone
 npm run test:e2e:ui       # the browser tier alone
+npm run test:e2e:a11y     # the axe-core scans alone
 npm run test:e2e:headed   # the browser tier, with a visible browser
 npm run test:e2e:report   # open the report from the last run
+npm run lint              # the suite lints itself; see below
+npm run typecheck         # TypeScript, no emit
 ```
+
+The suite lints itself, and the rules it enforces are the ones that otherwise fail quietly: no
+`waitForTimeout`, no `force: true`, no test without an assertion, no page object that asserts,
+and no spec importing `test` from `@playwright/test` instead of from the suite's own fixtures.
+[docs/test-strategy.md](docs/test-strategy.md) gives the reason for each.
 
 A failure leaves evidence in `test-results/`: a screenshot and a video of each one, and a trace
 where a retry was involved. Locally there are no retries — a failure is meant to be visible the
 first time it happens — so traces come from CI, which retries twice to absorb the noise of a
 shared runner. All of it is git-ignored.
 
+## Coverage
+
+One report across both languages — Cobertura from coverlet, lcov from v8, merged by
+ReportGenerator:
+
+```powershell
+./scripts/coverage.ps1          # both suites, merged report, floors enforced
+./scripts/coverage.ps1 -Open    # ...and open it
+```
+
+| | Line | Branch |
+|---|---|---|
+| **Combined** | **46.0%** | **56.7%** |
+| `librarysystem-web` (TypeScript) | 80.2% | 61.1% |
+| `LibrarySystem.Api` (C#) | 36.2% | 45.5% |
+
+That C# figure is the interesting one, and it is lower than the API is tested. Whole controllers
+read as 0% while being exercised repeatedly by the tests in `tests/api/`, because coverage
+measures code that ran inside the *instrumented process* and those tests drive the API as a
+separate one. The end-to-end tiers are deliberately outside the number;
+[docs/test-strategy.md](docs/test-strategy.md) explains why including them would make the figure
+less honest rather than more flattering.
+
+## Accessibility
+
+Every route is scanned with axe-core against WCAG 2.0 and 2.1 at levels A and AA, along with three
+states a scan of a freshly loaded page never sees: a form showing validation errors, a live region
+announcing a toast, and a row midway through a confirmation step. No violations.
+
+[docs/accessibility.md](docs/accessibility.md) records what that does and does not mean — roughly
+a third of real barriers are detectable this way — and one finding worth repeating here: because
+every locator in the suite is a role or a label, deleting a form label breaks the *functional*
+tests as well as the scans. A suite hung on test ids would have gone on passing while the form
+became unusable.
+
 ## Status
 
-Early, but running end to end. The stack under test is in place, both inherited suites are green,
-and Playwright now drives the production bundle against the real API and a real SQL Server. What
-exists so far is the harness and one smoke test at each tier — the suite proper is built on top
-of that.
+The suite runs end to end: 74 Playwright tests across three projects — HTTP-level tests against
+the real API, browser tests against the production bundle, and accessibility scans — on top of the
+33 inherited unit tests. Coverage is merged across both languages. Still to come: continuous
+integration, and a fault-injection pass that seeds real defects to find out which tier catches
+each one.
