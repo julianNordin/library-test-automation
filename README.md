@@ -4,10 +4,6 @@ Automated end-to-end and API tests for a book-lending stack: an ASP.NET Core Web
 React + TypeScript single-page client, tested *together* — real browser, real HTTP, real SQL
 Server — rather than each one tested alone against a mock of the other.
 
-> **Pre-build stub.** The suite is not written yet. This file is rewritten in the final phase,
-> once there are results worth describing; it exists now so the repository states its intent
-> from the first commit.
-
 ## Why
 
 Both applications already ship tests, and both stop at the same boundary.
@@ -20,16 +16,16 @@ because neither one ever puts them in the same room.
 This project puts them in the same room, and adds the reporting and CI that make the whole test
 pyramid visible in one place.
 
-## Planned scope
+## What is here
 
 - **Playwright** driving the production client bundle against the running API
 - An **API tier** of HTTP-level tests over the real server and a real database
 - **Page objects** and **test data builders**, with isolation by unique data rather than teardown
 - **Accessibility** scanning with axe-core
 - **Coverage** merged across C# and TypeScript into a single report
-- The **full suite in CI**, with traces retained from failures
-- A **fault-injection matrix** — defects seeded deliberately, and a record of which tier caught
-  each one
+
+Still to come: the full suite in CI, and a **fault-injection matrix** — real defects seeded
+deliberately, and a record of which tier caught each one and how quickly.
 
 ## The system under test
 
@@ -44,7 +40,7 @@ completes:
 
 | Tier | Lives in | Tests |
 |---|---|---|
-| Unit and in-process integration (C#) | `src/LibrarySystem.Api.Tests` | 11 |
+| Unit and in-process integration (C#) | `src/LibrarySystem.Api.Tests` | 12 |
 | Component and mocked integration (TypeScript) | `src/web/src` | 21 |
 | API and end-to-end (this project) | `tests/` | 74 |
 
@@ -145,8 +141,8 @@ applications up itself, waits for them, runs the tests and stops them again:
 2. it builds the client and serves the **production bundle** through Vite's preview server on
    `:4173`, which forwards `/api` to the API — so the browser sees a single origin and the API
    needs no CORS policy at all
-3. it runs both projects: `api`, which speaks HTTP with no browser, and `ui`, which drives
-   Chromium against that bundle
+3. it runs all three projects: `api`, which speaks HTTP with no browser; `ui`, which drives
+   Chromium against that bundle; and `a11y`, which scans it
 
 That the suite owns the lifecycle is deliberate rather than convenient. Started by hand, each
 application leaves a survivor behind — `dotnet run` launches the API as a child process that
