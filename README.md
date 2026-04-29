@@ -1,5 +1,7 @@
 # LibrarySystem E2E
 
+[![CI](https://github.com/julianNordin/library-test-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/julianNordin/library-test-automation/actions/workflows/ci.yml)
+
 Automated end-to-end and API tests for a book-lending stack: an ASP.NET Core Web API and a
 React + TypeScript single-page client, tested *together* — real browser, real HTTP, real SQL
 Server — rather than each one tested alone against a mock of the other.
@@ -24,8 +26,10 @@ pyramid visible in one place.
 - **Accessibility** scanning with axe-core
 - **Coverage** merged across C# and TypeScript into a single report
 
-Still to come: the full suite in CI, and a **fault-injection matrix** — real defects seeded
-deliberately, and a record of which tier caught each one and how quickly.
+- The **whole pyramid in CI**, with traces kept from any failure
+
+Still to come: a **fault-injection matrix** — real defects seeded deliberately, and a record of
+which tier caught each one and how quickly.
 
 ## The system under test
 
@@ -203,6 +207,33 @@ a third of real barriers are detectable this way — and one finding worth repea
 every locator in the suite is a role or a label, deleting a form label breaks the *functional*
 tests as well as the scans. A suite hung on test ids would have gone on passing while the form
 became unusable.
+
+## Continuous integration
+
+Three jobs, in [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+**`unit`** runs both projects' own suites. It does **not** start the database, and that is a
+finding rather than an oversight: neither suite needs one — the C# tests use the in-memory
+provider and the client's mock every request — and the client's suite is timing-sensitive enough
+that a machine busy running SQL Server costs it three tests. Starting the container in that job
+would import a load problem into CI, where it would read as a mystery.
+
+**`e2e`** brings up the database from **this repository's own `docker-compose.yml`**, not from a
+GitHub service container. One definition of the test database means the one you test against
+locally and the one CI tests against cannot drift apart, which is the failure this whole project
+exists to rule out; a second definition in a workflow file would quietly undo it. Then Chromium,
+then the suite — with parallel workers left on, because every spec creates its own uniquely-named
+data and asserts only on that, so parallelism is safe by construction rather than by luck.
+
+Lint and typecheck run before the browser download, so a type error costs seconds rather than
+minutes.
+
+**`report`** merges the two coverage files and writes the combined figure into the run summary.
+
+The Playwright report, traces, screenshots and videos are uploaded under `if: always()`, because a
+failing run that leaves no evidence behind is a run nobody can debug. If the suite fails, the
+database container's log is printed too — the classic cause of a mystery failure there is an
+engine that never finished starting.
 
 ## Status
 
