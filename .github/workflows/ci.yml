@@ -1,0 +1,197 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A superseded run tells you about a commit nobody is looking at any more.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  NODE_VERSION: '24'
+
+jobs:
+  # ---------------------------------------------------------------------------------------
+  # The base of the pyramid: both projects' own suites. Neither needs a database - the C# one
+  # uses the in-memory provider and the client's mocks every request - and the database is
+  # deliberately NOT started here.
+  #
+  # That is not merely tidiness. The client's suite is timing-sensitive, and on a machine also
+  # running SQL Server it loses three tests to a 1000ms default in its query helpers. Starting
+  # the container in this job would import that failure into CI, where it would look like a
+  # mystery rather than like the load it is.
+  # ---------------------------------------------------------------------------------------
+  unit:
+    name: Unit and component tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            src/web/package-lock.json
+
+      - name: Test the API
+        run: dotnet test --collect:"XPlat Code Coverage" --nologo
+
+      - name: Install the client's dependencies
+        working-directory: src/web
+        run: npm ci
+
+      - name: Test the client
+        working-directory: src/web
+        run: npx vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text-summary
+
+      - name: Keep the C# coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-csharp
+          path: '**/coverage.cobertura.xml'
+          retention-days: 7
+
+      - name: Keep the client coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-web
+          path: src/web/coverage/lcov.info
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------------------
+  # The top of the pyramid, against the real thing: SQL Server in a container, the API as a
+  # process, the production bundle in Chromium.
+  #
+  # The database comes from the repository's own docker-compose.yml rather than from a GitHub
+  # service container, so there is one definition of the test database and local and CI cannot
+  # drift apart. That is the whole point of the project, and a second definition here would
+  # quietly undo it.
+  # ---------------------------------------------------------------------------------------
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            src/web/package-lock.json
+
+      # The same file a developer copies, so CI runs the recipe the README documents rather than
+      # a private variation of it. Throwaway credentials for a container that lives minutes.
+      - name: Configure the environment
+        run: cp .env.example .env
+
+      - name: Install the suite's dependencies
+        run: npm ci
+
+      - name: Install the client's dependencies
+        working-directory: src/web
+        run: npm ci
+
+      # Before the browser download, so a lint or type error costs seconds rather than minutes.
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start the test database
+        run: docker compose up -d --wait db
+
+      # Workers stay on. Every spec creates its own uniquely-named data and asserts only on it,
+      # so parallelism is safe by construction rather than by luck - and saying so out loud is
+      # the point of having built it that way.
+      - name: Run the suite
+        run: npm run test:e2e
+
+      # Under `always()`, because a failing run that leaves no evidence is a run nobody can
+      # debug. The report carries the traces, screenshots and videos of anything that failed.
+      - name: Keep the report and the traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Show the database log if the suite failed
+        if: failure()
+        run: docker compose logs db
+
+  # ---------------------------------------------------------------------------------------
+  # One coverage figure for a two-language stack, in the run summary where it is actually read.
+  # ---------------------------------------------------------------------------------------
+  report:
+    name: Coverage report
+    runs-on: ubuntu-latest
+    needs: unit
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-csharp
+          path: coverage-input/csharp
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-web
+          path: coverage-input/web
+
+      # Pinned in .config/dotnet-tools.json, so the same version runs here and on a laptop.
+      - name: Restore the report tool
+        run: dotnet tool restore
+
+      - name: Merge the two reports
+        run: |
+          dotnet reportgenerator \
+            "-reports:coverage-input/csharp/**/coverage.cobertura.xml;coverage-input/web/lcov.info" \
+            "-targetdir:coverage-report" \
+            "-reporttypes:Html;Cobertura;MarkdownSummaryGithub" \
+            "-sourcedirs:src;src/web"
+
+      - name: Put it in the run summary
+        run: cat coverage-report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the full report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage-report/
+          retention-days: 14
