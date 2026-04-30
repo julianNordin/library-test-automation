@@ -18,6 +18,10 @@ export default tseslint.config(
       'playwright-report/**',
       'test-results/**',
       'blob-report/**',
+      // Generated coverage output. The HTML reports ship bundled third-party scripts, which lint
+      // as thousands of errors in somebody else's minified code.
+      'coverage/**',
+      'coverage-report/**',
     ],
   },
 
