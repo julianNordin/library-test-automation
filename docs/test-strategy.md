@@ -525,3 +525,62 @@ current figure fails every run until somebody lowers it, which teaches a team to
 entirely; a threshold far below can never trip. Neither is a check. These are meant to be raised
 deliberately when the coverage behind them genuinely improves — and the gate was checked by
 raising one to 99% and confirming the script fails with the reason.
+
+## Flakiness
+
+> **A test that fails intermittently is fixed, or quarantined with a written reason. It is never
+> retried until it looks green.**
+
+Retries are configured — two of them, in CI only — and the distinction matters. On a shared
+runner, a container that took an extra moment to accept connections is noise about the
+infrastructure rather than information about the software, and a retry absorbs it. Locally there
+are no retries at all, so a failure is visible the first time it happens, in front of the person
+who caused it. A retry count applied to a genuinely unreliable test does not make the suite more
+trustworthy; it makes the suite quieter, which is the opposite.
+
+Most of this document is, read from a certain angle, about preventing flakiness before it exists:
+
+- **Web-first assertions only**, enforced by the linter. This is the big one — nearly every flaky
+  Playwright suite is a `expect(value)` where an `expect(locator)` belonged.
+- **Isolation by unique data**, so two tests running at once cannot be the reason either fails.
+- **Locators that can only mean one thing.** The client uses `role="status"` for loading
+  indicators and success toasts alike, and `role="alert"` for form errors and failure toasts
+  alike. An unscoped locator for either resolves differently depending on how fast the run was,
+  which is a flaky test manufactured out of nothing. The toast object scopes to the notification
+  region; the form object selects by message.
+- **Toasts addressed by their message**, because two of them are on screen at once during a
+  borrow-then-return flow, and an unfiltered locator matching two elements fails strict mode only
+  when the machine was quick.
+
+Verified rather than hoped: the browser tier passes under `--repeat-each=3`, the whole suite
+passes twice in a row without resetting the database, and it passes cold against an empty one.
+
+### The one test group known to be timing-sensitive, and why it is not fixed here
+
+The client's own suite loses three of its twenty-one tests when it is run on a machine that is
+also running SQL Server. Not intermittently — reproducibly, three times out of three each way:
+
+| Database container | Result | Wall time |
+|---|---|---|
+| stopped | 21 of 21 pass | ~8s |
+| running | 3 fail, 18 pass | 28-60s |
+
+All three are the same shape: a `findBy*` query timing out against Testing Library's 1000ms
+default while the machine is busy. The suite takes three to seven times longer under that load,
+and the queries run out of patience before the client's data arrives.
+
+Two things could be done. The standard remedy is to raise that default, which would work and
+would be a change to a vendored project's test configuration in order to accommodate a load it
+should never have been under. The other is to stop putting it under that load.
+
+**The second was chosen, and it costs nothing**, because those tests need no database — they mock
+every request. CI's unit job therefore never starts the container, which is not tidiness but the
+whole of the fix; a comment in the workflow says so, since a job that pointedly does not do
+something invites being "corrected" later. `scripts/coverage.ps1` warns when the container is up.
+
+This is the flake policy applied to itself. The failure is understood, reproducible, and caused by
+the environment rather than by the code; the response is to remove the cause rather than to widen
+the tolerance until the symptom stops. Raising the timeout would have made the number go away
+while leaving the coupling — and the next person to run both at once on a slower machine would
+have met it again, with the evidence of the first investigation now buried in a config value
+nobody can explain.
